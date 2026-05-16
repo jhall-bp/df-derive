@@ -48,8 +48,35 @@ jobs:
       - name: Clippy
         run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Run tests
-        run: cargo test --workspace --all-features
+      - name: Run architecture tests
+        env:
+          CARGO_BUILD_JOBS: '1'
+        run: cargo test -p df-derive --test architecture --all-features -- --nocapture
+
+      - name: Run trybuild tests
+        env:
+          CARGO_BUILD_JOBS: '1'
+        run: cargo test -p df-derive --test progress --all-features -- --nocapture
+
+      - name: Run runtime tests
+        env:
+          CARGO_BUILD_JOBS: '1'
+        run: cargo test -p df-derive --test runtime_semantics --all-features -- --nocapture
+
+      - name: Run unit and light tests
+        env:
+          CARGO_BUILD_JOBS: '1'
+        run: >-
+          cargo test -p df-derive-core --all-features -- --nocapture &&
+          cargo test -p df-derive-macros --all-features -- --nocapture &&
+          cargo test -p df-derive --lib --all-features -- --nocapture &&
+          cargo test -p df-derive
+          --test clippy_unsafe_derive_deserialize
+          --test codegen_path_centralization
+          --test generated_lint_hygiene
+          --test idents_centralization
+          --test local_runtime
+          --all-features -- --nocapture
 
       - name: Check package contents
         run: cargo package --workspace --list
