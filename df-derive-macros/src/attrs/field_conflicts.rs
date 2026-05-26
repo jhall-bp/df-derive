@@ -2,13 +2,14 @@ use crate::ir::DateTimeUnit;
 use proc_macro2::Span;
 
 use super::Spanned;
-use super::field::{FieldConversion, FieldDisposition, LeafOverride};
+use super::field::{FieldConversion, FieldDisposition, FlattenConfig, LeafOverride};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub(super) enum FieldAttr {
     Skip,
     Binary,
     Leaf(LeafOverride),
+    Flatten(FlattenConfig),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -19,10 +20,11 @@ enum FieldOverrideKey {
     AsString,
     Decimal,
     TimeUnit,
+    Flatten,
 }
 
 impl FieldAttr {
-    const fn key(self) -> FieldOverrideKey {
+    const fn key(&self) -> FieldOverrideKey {
         match self {
             Self::Skip => FieldOverrideKey::Skip,
             Self::Binary => FieldOverrideKey::AsBinary,
@@ -30,10 +32,11 @@ impl FieldAttr {
             Self::Leaf(LeafOverride::AsString) => FieldOverrideKey::AsString,
             Self::Leaf(LeafOverride::Decimal { .. }) => FieldOverrideKey::Decimal,
             Self::Leaf(LeafOverride::TimeUnit(_)) => FieldOverrideKey::TimeUnit,
+            Self::Flatten(_) => FieldOverrideKey::Flatten,
         }
     }
 
-    const fn label(self) -> &'static str {
+    const fn label(&self) -> &'static str {
         match self.key() {
             FieldOverrideKey::Skip => "skip",
             FieldOverrideKey::AsBinary => "as_binary",
@@ -41,10 +44,11 @@ impl FieldAttr {
             FieldOverrideKey::AsString => "as_string",
             FieldOverrideKey::Decimal => "decimal(...)",
             FieldOverrideKey::TimeUnit => "time_unit",
+            FieldOverrideKey::Flatten => "flatten",
         }
     }
 
-    pub(super) const fn into_disposition(self, span: Span) -> FieldDisposition {
+    pub(super) fn into_disposition(self, span: Span) -> FieldDisposition {
         match self {
             Self::Skip => FieldDisposition::Skip,
             Self::Binary => FieldDisposition::Include(FieldConversion::Binary { span }),
@@ -54,6 +58,10 @@ impl FieldAttr {
                     span,
                 }))
             }
+            Self::Flatten(config) => FieldDisposition::Include(FieldConversion::Flatten(Spanned {
+                value: config,
+                span,
+            })),
         }
     }
 }
@@ -115,8 +123,12 @@ fn duplicate_override_conflict(
     error
 }
 
-fn conflict_message(field_display_name: &str, existing: FieldAttr, incoming: FieldAttr) -> String {
-    use FieldOverrideKey::{AsBinary, AsStr, AsString, Decimal, Skip, TimeUnit};
+fn conflict_message(
+    field_display_name: &str,
+    existing: &FieldAttr,
+    incoming: &FieldAttr,
+) -> String {
+    use FieldOverrideKey::{AsBinary, AsStr, AsString, Decimal, Flatten, Skip, TimeUnit};
 
     match (existing.key(), incoming.key()) {
         (AsStr, AsString) | (AsString, AsStr) => {
@@ -151,6 +163,11 @@ fn conflict_message(field_display_name: &str, existing: FieldAttr, incoming: Fie
             "field `{field_display_name}` combines `skip` with another field attribute; \
              `skip` omits the field entirely, so conversion attributes have no effect; drop one"
         ),
+        (Flatten, _) | (_, Flatten) => format!(
+            "field `{field_display_name}` combines `flatten` with another field attribute; \
+             `flatten` splices a nested row schema into the parent, so conversion attributes \
+             and `skip` cannot apply at the same time; drop one"
+        ),
         (AsBinary, _) | (_, AsBinary) => format!(
             "field `{field_display_name}` combines `as_binary` with another override; \
              `as_binary` produces a Binary column over a `Vec<u8>` shape and is \
@@ -165,18 +182,19 @@ fn conflict_message(field_display_name: &str, existing: FieldAttr, incoming: Fie
 
 fn override_conflict(
     field_display_name: &str,
-    existing: FieldAttr,
+    existing: &FieldAttr,
     existing_span: Span,
-    incoming: FieldAttr,
+    incoming: &FieldAttr,
     incoming_span: Span,
 ) -> syn::Error {
+    let existing_label = existing.label();
     let mut error = syn::Error::new(
         incoming_span,
         conflict_message(field_display_name, existing, incoming),
     );
     error.combine(syn::Error::new(
         existing_span,
-        format!("first `{}` override declared here", existing.label()),
+        format!("first `{existing_label}` override declared here"),
     ));
     error
 }
@@ -195,7 +213,7 @@ pub(super) fn set_override(
         Some((existing, existing_span)) if existing.key() == incoming.key() => {
             Err(duplicate_override_conflict(
                 field_display_name,
-                *existing,
+                existing.clone(),
                 incoming,
                 *existing_span,
                 incoming_span,
@@ -203,9 +221,9 @@ pub(super) fn set_override(
         }
         Some((existing, existing_span)) => Err(override_conflict(
             field_display_name,
-            *existing,
+            existing,
             *existing_span,
-            incoming,
+            &incoming,
             incoming_span,
         )),
     }

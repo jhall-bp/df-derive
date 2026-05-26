@@ -88,6 +88,7 @@ fn build_nested_emit(
             idx,
             name,
         },
+        name_policy: column.nested_name_policy(),
         ty: type_path,
         columnar_trait: &config.traits.columnar,
         to_df_trait: &config.traits.to_dataframe,
@@ -267,8 +268,10 @@ fn build_nested_emit_with_access(
     type_path: &TokenStream,
     access: &TokenStream,
 ) -> ColumnEmit {
+    let name_policy = crate::ir::NestedNamePolicy::Field;
     let ctx = NestedLeafCtx {
         base: BaseCtx { access, idx, name },
+        name_policy: &name_policy,
         ty: type_path,
         columnar_trait: &config.traits.columnar,
         to_df_trait: &config.traits.to_dataframe,

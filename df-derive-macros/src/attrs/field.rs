@@ -6,6 +6,11 @@ use super::Spanned;
 use super::decimal::parse_decimal_attr;
 use super::field_conflicts::{FieldAttr, set_override};
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct FlattenConfig {
+    pub prefix: Option<String>,
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum LeafOverride {
     AsStr,
@@ -25,6 +30,7 @@ pub enum FieldConversion {
     Default,
     LeafOverride(Spanned<LeafOverride>),
     Binary { span: Span },
+    Flatten(Spanned<FlattenConfig>),
 }
 
 fn parse_time_unit_attr(meta: &syn::meta::ParseNestedMeta<'_>) -> Result<DateTimeUnit, syn::Error> {
@@ -38,6 +44,61 @@ fn parse_time_unit_attr(meta: &syn::meta::ParseNestedMeta<'_>) -> Result<DateTim
             format!("invalid `time_unit` value `{other}`; expected one of \"ms\", \"us\", \"ns\""),
         )),
     }
+}
+
+fn duplicate_flatten_prefix_error(
+    existing: (String, Span),
+    incoming_value: &str,
+    incoming_span: Span,
+) -> syn::Error {
+    let (existing_value, existing_span) = existing;
+    let message = if existing_value == incoming_value {
+        "`flatten(...)` declares duplicate `prefix` key; remove one".to_owned()
+    } else {
+        format!(
+            "`flatten(...)` declares duplicate `prefix` keys with different values; \
+             first is `{existing_value}`, second is `{incoming_value}`; pick one"
+        )
+    };
+
+    let mut error = syn::Error::new(incoming_span, message);
+    error.combine(syn::Error::new(
+        existing_span,
+        "first `prefix` key declared here",
+    ));
+    error
+}
+
+fn parse_flatten_attr(meta: &syn::meta::ParseNestedMeta<'_>) -> Result<FlattenConfig, syn::Error> {
+    if !meta.input.peek(syn::token::Paren) {
+        return Ok(FlattenConfig { prefix: None });
+    }
+
+    let mut prefix: Option<(String, Span)> = None;
+    meta.parse_nested_meta(|sub| {
+        if sub.path.is_ident("prefix") {
+            let key_span = sub.path.span();
+            let lit: syn::LitStr = sub.value()?.parse()?;
+            let value = lit.value();
+            if value.is_empty() {
+                return Err(syn::Error::new_spanned(
+                    lit,
+                    "`flatten(prefix = \"...\")` requires a non-empty prefix",
+                ));
+            }
+            if let Some(existing) = prefix.take() {
+                return Err(duplicate_flatten_prefix_error(existing, &value, key_span));
+            }
+            prefix = Some((value, key_span));
+            Ok(())
+        } else {
+            Err(sub.error("unknown key inside `flatten(...)`; expected `prefix = \"...\"`"))
+        }
+    })?;
+
+    Ok(FlattenConfig {
+        prefix: prefix.map(|(value, _)| value),
+    })
 }
 
 pub fn parse_field_disposition(
@@ -93,9 +154,17 @@ pub fn parse_field_disposition(
                         FieldAttr::Leaf(LeafOverride::TimeUnit(unit)),
                         incoming_span,
                     )
+                } else if meta.path.is_ident("flatten") {
+                    let config = parse_flatten_attr(&meta)?;
+                    set_override(
+                        field_display_name,
+                        &mut override_,
+                        FieldAttr::Flatten(config),
+                        incoming_span,
+                    )
                 } else {
                     Err(meta.error(
-                        "unknown key in #[df_derive(...)] field attribute; expected `skip`, `as_str`, `as_string`, `as_binary`, `decimal(precision = N, scale = N)`, or `time_unit = \"ms\"|\"us\"|\"ns\"`",
+                        "unknown key in #[df_derive(...)] field attribute; expected `skip`, `flatten`, `as_str`, `as_string`, `as_binary`, `decimal(precision = N, scale = N)`, or `time_unit = \"ms\"|\"us\"|\"ns\"`",
                     ))
                 }
             })?;
@@ -113,6 +182,14 @@ mod tests {
 
     fn parse_disposition(field: &syn::Field) -> syn::Result<FieldDisposition> {
         parse_field_disposition(field, "value")
+    }
+
+    fn flatten_config(field: &syn::Field) -> FlattenConfig {
+        let disposition = parse_disposition(field).expect("field disposition should parse");
+        let FieldDisposition::Include(FieldConversion::Flatten(config)) = disposition else {
+            panic!("field flatten config should be present");
+        };
+        config.value
     }
 
     fn leaf_override_value(field: &syn::Field) -> LeafOverride {
@@ -186,5 +263,35 @@ mod tests {
 
         assert!(rendered.contains("has both `as_str` and `as_string`"));
         assert!(rendered.contains("first `as_str` override declared here"));
+    }
+
+    #[test]
+    fn parses_flatten_with_optional_prefix() {
+        let bare = flatten_config(&syn::parse_quote! {
+            #[df_derive(flatten)]
+            value: Key
+        });
+        assert_eq!(bare.prefix, None);
+
+        let prefixed = flatten_config(&syn::parse_quote! {
+            #[df_derive(flatten(prefix = "contract"))]
+            value: Key
+        });
+        assert_eq!(prefixed.prefix.as_deref(), Some("contract"));
+    }
+
+    #[test]
+    fn rejects_bad_flatten_prefix() {
+        let empty = parse_disposition(&syn::parse_quote! {
+            #[df_derive(flatten(prefix = ""))]
+            value: Key
+        });
+        assert!(empty.is_err());
+
+        let duplicate = parse_disposition(&syn::parse_quote! {
+            #[df_derive(flatten(prefix = "a", prefix = "b"))]
+            value: Key
+        });
+        assert!(duplicate.is_err());
     }
 }

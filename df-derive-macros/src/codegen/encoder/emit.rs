@@ -194,6 +194,7 @@ fn ctb_materialize(
         columnar_trait,
         to_df_trait,
         name,
+        name_policy,
         idx,
     } = *ctb;
     let flat = idents::nested_flat(idx);
@@ -222,6 +223,7 @@ fn ctb_materialize(
         field_idx: idx,
         ty,
         column_prefix: name,
+        name_policy,
         flat: &flat,
         positions,
         total_len,

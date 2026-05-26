@@ -82,6 +82,13 @@ use syn::{DeriveInput, parse_macro_input};
 ///   be used for caches, handles, source metadata, or other helper values that
 ///   should remain on the Rust struct but not become columns. Mutually
 ///   exclusive with conversion attributes.
+/// - Field-level: `#[df_derive(flatten)]` to splice a bare nested row field's
+///   child columns into the parent without the field-name prefix. Use
+///   `#[df_derive(flatten(prefix = "..."))]` for an explicit output
+///   namespace. Flattening is limited to nested struct/generic row shapes
+///   after transparent pointer peeling; `Option<T>` and `Vec<T>` stay on the
+///   normal prefixed nested path. Flattened derives validate duplicate output
+///   names when building schema and `DataFrame`s.
 /// - Field-level: `#[df_derive(as_string)]` to stringify values via `Display` (e.g., enums) during
 ///   conversion, resulting in `DataType::String` or `List<String>`. Generated encoders reuse a
 ///   `String` scratch buffer per field; the column builder still copies the formatted bytes.

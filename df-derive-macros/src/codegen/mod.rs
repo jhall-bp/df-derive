@@ -5,6 +5,7 @@ mod columnar_impl;
 mod config;
 mod encoder;
 pub mod external_paths;
+mod nested_names;
 mod schema;
 mod schema_nested;
 mod source_access;
@@ -51,8 +52,8 @@ pub fn generate_code(ir: &StructIR, config: &MacroConfig) -> TokenStream {
 mod tests {
     use super::*;
     use crate::ir::{
-        AccessChain, ColumnIR, FieldSource, LeafShape, LeafSpec, NonEmpty, NumericKind, StructIR,
-        TerminalLeafSpec, VecLayerSpec, VecLayers, WrapperShape,
+        AccessChain, ColumnIR, FieldSource, LeafShape, LeafSpec, NestedNamePolicy, NonEmpty,
+        NumericKind, StructIR, TerminalLeafSpec, VecLayerSpec, VecLayers, WrapperShape,
     };
     use quote::{format_ident, quote};
 
@@ -96,6 +97,7 @@ mod tests {
             field_source(name),
             terminal_leaf(LeafSpec::Numeric(NumericKind::U32)),
             wrapper_shape,
+            NestedNamePolicy::Field,
         )
     }
 
@@ -105,6 +107,7 @@ mod tests {
             field_source(name),
             terminal_leaf(LeafSpec::Struct(syn::parse_quote!(Inner))),
             wrapper_shape,
+            NestedNamePolicy::Field,
         )
     }
 
@@ -219,6 +222,7 @@ mod tests {
                 field_source("pair"),
                 terminal_leaf(LeafSpec::Struct(syn::parse_quote!(Inner))),
                 WrapperShape::Leaf(LeafShape::Bare),
+                NestedNamePolicy::Field,
             )],
         };
         let tuple_nested = generate_code(&tuple_nested_ir, &test_config()).to_string();

@@ -716,7 +716,7 @@ dependencies = [
 
 [[package]]
 name = "df-derive"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "chrono",
  "criterion",
@@ -733,7 +733,7 @@ dependencies = [
 
 [[package]]
 name = "df-derive-core"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "polars",
  "polars-arrow",
@@ -742,7 +742,7 @@ dependencies = [
 
 [[package]]
 name = "df-derive-macros"
-version = "0.3.0"
+version = "0.3.1"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",

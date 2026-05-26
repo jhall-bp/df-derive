@@ -28,6 +28,7 @@ fn project_field(field: FieldIR, columns: &mut Vec<ColumnIR>) {
             root,
             terminal_leaf(leaf_spec),
             field.wrapper_shape,
+            field.nested_name_policy,
         )),
     }
 }

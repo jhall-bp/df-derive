@@ -39,6 +39,28 @@ pub fn generate_trait_impl(ir: &StructIR, config: &super::MacroConfig) -> TokenS
         .iter()
         .map(|column| super::schema::build_schema_entries(column, config))
         .collect();
+    let unique_name_validation = if super::support::needs_unique_name_validation(ir) {
+        let validate_unique_column_names = super::encoder::idents::validate_unique_column_names();
+        quote! {
+            #validate_unique_column_names(
+                all_series.iter().map(|column| column.name().as_str()),
+                ::core::any::type_name::<Self>(),
+            )?;
+        }
+    } else {
+        TokenStream::new()
+    };
+    let schema_unique_name_validation = if super::support::needs_unique_name_validation(ir) {
+        let validate_unique_column_names = super::encoder::idents::validate_unique_column_names();
+        quote! {
+            #validate_unique_column_names(
+                fields.iter().map(|(name, _)| name.as_str()),
+                ::core::any::type_name::<Self>(),
+            )?;
+        }
+    } else {
+        TokenStream::new()
+    };
 
     // `to_dataframe(&self)` delegates to the `Columnar::columnar_from_refs`
     // trait method with a single-element ref slice. There is no parallel
@@ -62,6 +84,7 @@ pub fn generate_trait_impl(ir: &StructIR, config: &super::MacroConfig) -> TokenS
                 #(
                     all_series.extend(#empty_series_creations);
                 )*
+                #unique_name_validation
                 #pp::DataFrame::new_infer_height(all_series)
             }
 
@@ -70,6 +93,7 @@ pub fn generate_trait_impl(ir: &StructIR, config: &super::MacroConfig) -> TokenS
                 #(
                     fields.extend(#schema_entries);
                 )*
+                #schema_unique_name_validation
                 ::std::result::Result::Ok(fields)
             }
         }

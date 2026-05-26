@@ -1,7 +1,8 @@
 use crate::attrs::{
-    FieldConversion, FieldDisposition, LeafOverride, Spanned, parse_field_disposition,
+    FieldConversion, FieldDisposition, FlattenConfig, LeafOverride, Spanned,
+    parse_field_disposition,
 };
-use crate::ir::FieldIR;
+use crate::ir::{FieldIR, LeafShape, NestedNamePolicy, WrapperShape};
 use crate::lower::binary::parse_as_binary_shape;
 use crate::lower::leaf::parse_leaf_spec;
 use crate::lower::tuple::{
@@ -11,6 +12,42 @@ use crate::lower::validation::reject_direct_self_reference;
 use crate::lower::wrappers::normalize_wrappers;
 use crate::type_analysis::{AnalyzedBase, analyze_type};
 use syn::Ident;
+
+fn flatten_name_policy(config: &FlattenConfig) -> NestedNamePolicy {
+    config
+        .prefix
+        .as_ref()
+        .map_or(NestedNamePolicy::Flatten, |prefix| {
+            NestedNamePolicy::Prefix(prefix.clone())
+        })
+}
+
+fn reject_invalid_flatten_field(
+    field: &syn::Field,
+    field_display_name: &str,
+    analyzed: &crate::type_analysis::AnalyzedType,
+    wrapper_shape: &WrapperShape,
+) -> Result<(), syn::Error> {
+    let nested_base = matches!(
+        analyzed.base,
+        AnalyzedBase::Struct(_) | AnalyzedBase::Generic(_)
+    );
+    let bare_shape = matches!(wrapper_shape, WrapperShape::Leaf(LeafShape::Bare));
+    if nested_base && bare_shape {
+        return Ok(());
+    }
+
+    Err(syn::Error::new_spanned(
+        field,
+        format!(
+            "field `{field_display_name}` has `flatten`, but flatten is only supported for \
+             bare nested row fields after transparent pointer peeling. Use a concrete \
+             struct or generic row payload that implements `ToDataFrame + Columnar`; \
+             nullable, list, tuple, primitive, and conversion-shaped fields must remain \
+             prefixed."
+        ),
+    ))
+}
 
 pub fn lower_field(
     field: &syn::Field,
@@ -35,10 +72,25 @@ pub fn lower_field(
         FieldDisposition::Skip => unreachable!("skip disposition returned before type analysis"),
     };
     let leaf_override: Option<&Spanned<LeafOverride>> = match conversion {
-        FieldConversion::Default | FieldConversion::Binary { .. } => None,
+        FieldConversion::Default | FieldConversion::Binary { .. } | FieldConversion::Flatten(_) => {
+            None
+        }
         FieldConversion::LeafOverride(override_) => Some(override_),
     };
     let leaf_override_value = leaf_override.map(|override_| &override_.value);
+
+    let normalized_wrappers = normalize_wrappers(&analyzed.wrappers);
+    if let FieldConversion::Flatten(config) = conversion {
+        reject_invalid_flatten_field(field, &display_name, &analyzed, &normalized_wrappers)?;
+        return Ok(Some(FieldIR {
+            name: name_ident,
+            field_index,
+            leaf_spec: parse_leaf_spec(field, &display_name, None, None, analyzed.base)?,
+            wrapper_shape: normalized_wrappers,
+            outer_smart_ptr_depth,
+            nested_name_policy: flatten_name_policy(&config.value),
+        }));
+    }
 
     let (leaf_spec, wrapper_shape) = match conversion {
         FieldConversion::Binary { span } => {
@@ -62,8 +114,9 @@ pub fn lower_field(
                 leaf_override_span,
                 analyzed.base,
             )?;
-            (leaf, normalize_wrappers(&analyzed.wrappers))
+            (leaf, normalized_wrappers)
         }
+        FieldConversion::Flatten(_) => unreachable!("flatten conversion returned above"),
     };
 
     Ok(Some(FieldIR {
@@ -72,5 +125,6 @@ pub fn lower_field(
         leaf_spec,
         wrapper_shape,
         outer_smart_ptr_depth,
+        nested_name_policy: NestedNamePolicy::Field,
     }))
 }

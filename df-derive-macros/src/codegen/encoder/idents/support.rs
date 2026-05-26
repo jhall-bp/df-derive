@@ -33,6 +33,10 @@ pub(in crate::codegen) fn validate_nested_column_dtype() -> Ident {
     format_ident!("__df_derive_validate_nested_column_dtype")
 }
 
+pub(in crate::codegen) fn validate_unique_column_names() -> Ident {
+    format_ident!("__df_derive_validate_unique_column_names")
+}
+
 pub(in crate::codegen) fn as_ref_str_assert_helper() -> Ident {
     format_ident!("__df_derive_assert_as_ref_str")
 }

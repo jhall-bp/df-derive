@@ -2,7 +2,7 @@ use proc_macro2::TokenStream;
 use quote::quote;
 
 use crate::codegen::external_paths::ExternalPaths;
-use crate::ir::VecLayers;
+use crate::ir::{NestedNamePolicy, VecLayers};
 
 use super::idents::{self, LayerIdents};
 use super::shape_walk::{
@@ -14,6 +14,7 @@ pub(super) struct NestedMaterializeCtx<'a> {
     pub field_idx: usize,
     pub ty: &'a TokenStream,
     pub column_prefix: &'a str,
+    pub name_policy: &'a NestedNamePolicy,
     pub flat: &'a syn::Ident,
     pub positions: Option<&'a syn::Ident>,
     pub total_len: TokenStream,
@@ -287,6 +288,7 @@ pub(super) fn materialize_nested_columns(ctx: &NestedMaterializeCtx<'_>) -> Toke
     let consume_direct = consume_nested_columns(
         &columns,
         ctx.column_prefix,
+        ctx.name_policy,
         ctx.to_df_trait,
         ctx.ty,
         &series_direct,
@@ -295,6 +297,7 @@ pub(super) fn materialize_nested_columns(ctx: &NestedMaterializeCtx<'_>) -> Toke
     let consume_take = consume_nested_columns(
         &columns,
         ctx.column_prefix,
+        ctx.name_policy,
         ctx.to_df_trait,
         ctx.ty,
         &series_take,
@@ -303,6 +306,7 @@ pub(super) fn materialize_nested_columns(ctx: &NestedMaterializeCtx<'_>) -> Toke
     let consume_empty = consume_nested_columns(
         &columns,
         ctx.column_prefix,
+        ctx.name_policy,
         ctx.to_df_trait,
         ctx.ty,
         &series_empty,
@@ -311,6 +315,7 @@ pub(super) fn materialize_nested_columns(ctx: &NestedMaterializeCtx<'_>) -> Toke
     let consume_all_absent = consume_nested_columns(
         &columns,
         ctx.column_prefix,
+        ctx.name_policy,
         ctx.to_df_trait,
         ctx.ty,
         &series_all_absent,
@@ -360,6 +365,7 @@ pub(super) fn materialize_nested_columns(ctx: &NestedMaterializeCtx<'_>) -> Toke
 pub(super) fn consume_nested_columns(
     columns: &syn::Ident,
     parent_name: &str,
+    name_policy: &NestedNamePolicy,
     to_df_trait: &syn::Path,
     ty: &TokenStream,
     series_expr: &TokenStream,
@@ -370,6 +376,11 @@ pub(super) fn consume_nested_columns(
     let prefixed = idents::nested_prefixed_name();
     let inner = idents::nested_inner_series();
     let named = idents::field_named_series();
+    let output_name = crate::codegen::nested_names::compose_nested_name(
+        name_policy,
+        parent_name,
+        &quote! { #col_name },
+    );
     quote! {
         for (#col_name, #dtype) in
             <#ty as #to_df_trait>::schema()?
@@ -377,9 +388,7 @@ pub(super) fn consume_nested_columns(
             let #col_name: &str = #col_name.as_str();
             let #dtype: &#pp::DataType = &#dtype;
             {
-                let #prefixed = ::std::format!(
-                    "{}.{}", #parent_name, #col_name,
-                );
+                let #prefixed = #output_name;
                 let #inner: #pp::Series = #series_expr;
                 let #named = #inner
                     .with_name(#prefixed.as_str().into());

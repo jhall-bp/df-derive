@@ -2,6 +2,27 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.3.1] - 2026-05-26
+
+### Added
+
+- New `#[df_derive(flatten)]` field attribute splices a bare nested row
+  field's schema and columns directly into the parent DataFrame without the
+  field-name prefix.
+- `#[df_derive(flatten(prefix = "..."))]` provides an explicit namespacing
+  escape hatch while still using the flatten encoder path.
+- Flattened derives now validate duplicate output column names when building
+  schema and DataFrames, including duplicates from manual nested
+  `ToDataFrame::schema()` implementations.
+
+### Notes
+
+- Flattening is intentionally narrow in this release: after transparent
+  pointer peeling, no semantic wrappers may remain. Bare nested structs,
+  generic row payloads, `Box<T>`, `Rc<T>`, `Arc<T>`, `&T`, and sized
+  `Cow<'_, T>` are supported; nullable and list-shaped nested fields stay on
+  the existing prefixed path.
+
 ## [0.3.0] - 2026-05-17
 
 ### Added

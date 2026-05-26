@@ -1,6 +1,6 @@
 use syn::Ident;
 
-use super::{AccessChain, NonEmpty, TerminalLeafSpec, VecLayers, WrapperShape};
+use super::{AccessChain, NestedNamePolicy, NonEmpty, TerminalLeafSpec, VecLayers, WrapperShape};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ColumnIR {
@@ -16,9 +16,10 @@ impl ColumnIR {
         source: FieldSource,
         leaf_spec: TerminalLeafSpec,
         wrapper_shape: WrapperShape,
+        nested_name_policy: NestedNamePolicy,
     ) -> Self {
         Self::Field(FieldColumn {
-            common: ColumnCommon::new(name, leaf_spec),
+            common: ColumnCommon::new(name, leaf_spec, nested_name_policy),
             source,
             wrapper_shape,
         })
@@ -32,7 +33,7 @@ impl ColumnIR {
         wrapper_shape: WrapperShape,
     ) -> Self {
         Self::TupleStatic(TupleStaticColumn {
-            common: ColumnCommon::new(name, leaf_spec),
+            common: ColumnCommon::new(name, leaf_spec, NestedNamePolicy::Field),
             root,
             path,
             wrapper_shape,
@@ -48,7 +49,7 @@ impl ColumnIR {
         wrapper_shape: WrapperShape,
     ) -> Self {
         Self::TupleParentOption(TupleParentOptionColumn {
-            common: ColumnCommon::new(name, leaf_spec),
+            common: ColumnCommon::new(name, leaf_spec, NestedNamePolicy::Field),
             root,
             path,
             parent_access,
@@ -66,7 +67,7 @@ impl ColumnIR {
         wrapper_shape: VecLayers,
     ) -> Self {
         Self::TupleParentVec(TupleParentVecColumn {
-            common: ColumnCommon::new(name, leaf_spec),
+            common: ColumnCommon::new(name, leaf_spec, NestedNamePolicy::Field),
             root,
             terminal_step,
             projection_layer,
@@ -81,6 +82,10 @@ impl ColumnIR {
 
     pub const fn leaf_spec(&self) -> &TerminalLeafSpec {
         self.common().leaf_spec()
+    }
+
+    pub const fn nested_name_policy(&self) -> &NestedNamePolicy {
+        self.common().nested_name_policy()
     }
 
     pub const fn vec_depth(&self) -> usize {
@@ -106,11 +111,20 @@ impl ColumnIR {
 pub struct ColumnCommon {
     name: String,
     leaf_spec: TerminalLeafSpec,
+    nested_name_policy: NestedNamePolicy,
 }
 
 impl ColumnCommon {
-    const fn new(name: String, leaf_spec: TerminalLeafSpec) -> Self {
-        Self { name, leaf_spec }
+    const fn new(
+        name: String,
+        leaf_spec: TerminalLeafSpec,
+        nested_name_policy: NestedNamePolicy,
+    ) -> Self {
+        Self {
+            name,
+            leaf_spec,
+            nested_name_policy,
+        }
     }
 
     pub fn name(&self) -> &str {
@@ -119,6 +133,10 @@ impl ColumnCommon {
 
     pub const fn leaf_spec(&self) -> &TerminalLeafSpec {
         &self.leaf_spec
+    }
+
+    pub const fn nested_name_policy(&self) -> &NestedNamePolicy {
+        &self.nested_name_policy
     }
 }
 
@@ -136,6 +154,10 @@ impl FieldColumn {
 
     pub const fn leaf_spec(&self) -> &TerminalLeafSpec {
         self.common.leaf_spec()
+    }
+
+    pub const fn nested_name_policy(&self) -> &NestedNamePolicy {
+        self.common.nested_name_policy()
     }
 
     pub const fn source(&self) -> &FieldSource {

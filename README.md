@@ -109,6 +109,9 @@ Container and wrapper support:
 
 - **Named structs**: each field becomes one or more columns.
 - **Nested structs**: fields flatten recursively with dot notation.
+- **Explicit field flattening**: `#[df_derive(flatten)]` on a bare nested row
+  field splices the child columns into the parent without the field-name
+  prefix.
 - **Vec of primitives and structs**: `Vec<T>` becomes a Polars `List` column;
   `Vec<Nested>` becomes one list column per nested field.
 - **`Option<T>`**: scalar and list columns carry null validity.
@@ -187,6 +190,8 @@ columns.
 Useful field attributes:
 
 - `#[df_derive(skip)]`: omit a field from generated schema and DataFrame output.
+- `#[df_derive(flatten)]`: splice a bare nested row field into the parent without the field-name prefix.
+- `#[df_derive(flatten(prefix = "..."))]`: splice a bare nested row field with an explicit output namespace.
 - `#[df_derive(as_string)]`: format values with `Display` into a string column using a reused scratch buffer.
 - `#[df_derive(as_str)]`: borrow via `AsRef<str>` without `Display` formatting or an intermediate scratch buffer.
 - `#[df_derive(as_binary)]`: encode byte-buffer shapes as Binary.
@@ -198,6 +203,15 @@ fields that should remain on the Rust struct but not become DataFrame columns.
 It is mutually exclusive with conversion attributes because skipped fields are
 not analyzed or emitted. Tuple struct fields can be skipped too; remaining
 tuple columns keep their original `field_{index}` names.
+
+`flatten` is useful for reusable key/value row structs whose fields should
+appear at the parent table level. It is accepted only for bare nested row
+shapes after transparent pointer peeling, such as `Key`, `Box<Key>`,
+`Arc<Key>`, `&Key`, or a bare generic row payload. `Option<Key>`,
+`Vec<Key>`, and other semantic wrappers remain on the normal prefixed nested
+path. Flattened derives validate duplicate output names when building schema
+and DataFrames. Use `flatten(prefix = "...")` when intentional namespacing is
+needed.
 
 `as_string` is useful for enums or validated newtypes that should appear as
 string columns. It formats each value into a reusable `String` scratch buffer
@@ -228,6 +242,10 @@ struct when you need an attributed field. Nested tuples inside an outer
 
 - Named struct fields use the Rust field name, such as `symbol`.
 - Nested structs use dot notation recursively, such as `address.city`.
+- `#[df_derive(flatten)]` nested fields omit the parent field name, such as
+  `city` instead of `address.city`.
+- `#[df_derive(flatten(prefix = "home"))]` nested fields use the explicit
+  prefix, such as `home.city`.
 - `Vec<Nested>` fields use the outer field plus nested field name, such as
   `quotes.close`.
 - Tuple-typed fields use `field.field_0`, `field.field_1`, and recurse for

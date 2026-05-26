@@ -13,6 +13,14 @@ fn needs_nested_validation(ir: &StructIR) -> bool {
         .any(|column| matches!(column.leaf_spec().route(), TerminalLeafRoute::Nested(_)))
 }
 
+pub(in crate::codegen) fn needs_unique_name_validation(ir: &StructIR) -> bool {
+    ir.columns.iter().any(|column| {
+        column
+            .nested_name_policy()
+            .requires_unique_name_validation()
+    })
+}
+
 #[allow(clippy::too_many_lines)]
 pub(in crate::codegen) fn generate_support(ir: &StructIR, config: &MacroConfig) -> TokenStream {
     let pp = config.external_paths.prelude();
@@ -149,9 +157,43 @@ pub(in crate::codegen) fn generate_support(ir: &StructIR, config: &MacroConfig) 
         TokenStream::new()
     };
 
+    let unique_name_validation_helper = if needs_unique_name_validation(ir) {
+        let validate_unique_column_names = encoder::idents::validate_unique_column_names();
+
+        quote! {
+            #[inline(always)]
+            #[allow(non_snake_case, clippy::inline_always)]
+            fn #validate_unique_column_names<'a, I>(
+                names: I,
+                type_name: &str,
+            ) -> #pp::PolarsResult<()>
+            where
+                I: ::core::iter::IntoIterator<Item = &'a str>,
+            {
+                let mut seen: ::std::collections::BTreeSet<&'a str> =
+                    ::std::collections::BTreeSet::new();
+                for name in names {
+                    if !seen.insert(name) {
+                        return ::std::result::Result::Err(#pp::polars_err!(
+                            ComputeError:
+                            "df-derive: duplicate column `{}` while building flattened DataFrame output for {}",
+                            name,
+                            type_name,
+                        ));
+                    }
+                }
+                ::std::result::Result::Ok(())
+            }
+        }
+    } else {
+        TokenStream::new()
+    };
+
     quote! {
         #list_assembly_helpers
 
         #nested_validation_helpers
+
+        #unique_name_validation_helper
     }
 }

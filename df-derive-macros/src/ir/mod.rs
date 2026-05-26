@@ -14,7 +14,7 @@ pub use columns::{
     TupleProjectionPath, TupleProjectionStep, TupleStaticColumn,
 };
 pub use leaf::*;
-pub use names::column_name_for_ident;
+pub use names::{NestedNamePolicy, column_name_for_ident};
 pub use non_empty::NonEmpty;
 pub use structs::{FieldIR, StructIR};
 pub use tuple::TupleElement;

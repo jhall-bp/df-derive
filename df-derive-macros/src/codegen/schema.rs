@@ -30,6 +30,7 @@ pub fn build_schema_entries(column: &ColumnIR, config: &super::MacroConfig) -> T
                 &type_path,
                 &config.traits.to_dataframe,
                 name,
+                column.nested_name_policy(),
                 column.vec_depth(),
                 &config.external_paths,
             )
@@ -50,6 +51,7 @@ pub fn build_empty_series(column: &ColumnIR, config: &super::MacroConfig) -> Tok
                 &type_path,
                 &config.traits.to_dataframe,
                 name,
+                column.nested_name_policy(),
                 column.vec_depth(),
                 &config.external_paths,
             )

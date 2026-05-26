@@ -1,5 +1,5 @@
 use crate::codegen::MacroConfig;
-use crate::ir::{AccessChain, TupleParentVecColumn, VecLayers};
+use crate::ir::{AccessChain, NestedNamePolicy, TupleParentVecColumn, VecLayers};
 use proc_macro2::TokenStream;
 use quote::quote;
 
@@ -385,6 +385,7 @@ fn emit_projected_vec_nested(
         field_idx: idx,
         ty: type_path,
         column_prefix: column_name,
+        name_policy: &NestedNamePolicy::Field,
         flat: &flat,
         positions: has_inner_option.then_some(&positions),
         total_len: quote! { #total_leaves },

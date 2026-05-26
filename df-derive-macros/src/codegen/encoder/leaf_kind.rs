@@ -5,6 +5,8 @@
 
 use proc_macro2::TokenStream;
 
+use crate::ir::NestedNamePolicy;
+
 #[derive(Clone)]
 pub(super) struct PerElementPush {
     pub per_elem_push: TokenStream,
@@ -21,5 +23,6 @@ pub(super) struct CollectThenBulk<'a> {
     pub columnar_trait: &'a syn::Path,
     pub to_df_trait: &'a syn::Path,
     pub name: &'a str,
+    pub name_policy: &'a NestedNamePolicy,
     pub idx: usize,
 }

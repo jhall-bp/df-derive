@@ -87,3 +87,6 @@ mod mixed_wrapper_shape_row;
 
 #[path = "runtime/59-tuple-vector-projection.rs"]
 mod tuple_vector_projection;
+
+#[path = "runtime/60-flatten-field.rs"]
+mod flatten_field;

@@ -62,6 +62,17 @@ fn columnar_method_body(
     } else {
         quote! { for #it_ident in items { #(#pushes)* } }
     };
+    let unique_name_validation = if super::support::needs_unique_name_validation(ir) {
+        let validate_unique_column_names = idents::validate_unique_column_names();
+        quote! {
+            #validate_unique_column_names(
+                #columns.iter().map(|column| column.name().as_str()),
+                ::core::any::type_name::<Self>(),
+            )?;
+        }
+    } else {
+        TokenStream::new()
+    };
 
     quote! {
         if items.is_empty() {
@@ -71,6 +82,7 @@ fn columnar_method_body(
         #push_loop
         let mut #columns: ::std::vec::Vec<#pp::Column> = ::std::vec::Vec::new();
         #(#builders)*
+        #unique_name_validation
         if #columns.is_empty() {
             let num_rows = items.len();
             let dummy = #pp::Series::new_empty(

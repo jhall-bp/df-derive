@@ -41,6 +41,7 @@ fn tests() {
     t.pass("tests/pass/46-datetime-timezones.rs");
     t.pass("tests/pass/47-option-access-chain-no-clone.rs");
     t.pass("tests/pass/48-runtime-override-combinations.rs");
+    t.pass("tests/pass/49-flatten-field.rs");
 
     // These files should fail to compile.
     t.compile_fail("tests/fail/96-fail-derive-on-union.rs");
@@ -99,4 +100,7 @@ fn tests() {
     t.compile_fail("tests/fail/149-fail-missing-concrete-eager-bounds.rs");
     t.compile_fail("tests/fail/150-fail-skip-with-as-string.rs");
     t.compile_fail("tests/fail/151-fail-decimal-with-time-unit.rs");
+    t.compile_fail("tests/fail/152-fail-flatten-invalid-shapes.rs");
+    t.compile_fail("tests/fail/153-fail-flatten-conflicts.rs");
+    t.compile_fail("tests/fail/154-fail-flatten-bad-prefix.rs");
 }
