@@ -75,17 +75,17 @@ jobs:
       matrix:
         include:
           - name: architecture
-            command: cargo test -p df-derive --test architecture --all-features -- --nocapture
+            command: cargo test --locked -p df-derive --test architecture --all-features -- --nocapture
           - name: trybuild
-            command: cargo test -p df-derive --test progress --all-features -- --nocapture
+            command: cargo test --locked -p df-derive --test progress --all-features -- --nocapture
           - name: runtime
-            command: cargo test -p df-derive --test runtime_semantics --all-features -- --nocapture
+            command: cargo test --locked -p df-derive --test runtime_semantics --all-features -- --nocapture
           - name: unit-and-light
             command: >-
-              cargo test -p df-derive-core --all-features -- --nocapture &&
-              cargo test -p df-derive-macros --all-features -- --nocapture &&
-              cargo test -p df-derive --lib --all-features -- --nocapture &&
-              cargo test -p df-derive
+              cargo test --locked -p df-derive-core --all-features -- --nocapture &&
+              cargo test --locked -p df-derive-macros --all-features -- --nocapture &&
+              cargo test --locked -p df-derive --lib --all-features -- --nocapture &&
+              cargo test --locked -p df-derive
               --test clippy_unsafe_derive_deserialize
               --test codegen_path_centralization
               --test generated_lint_hygiene
@@ -142,10 +142,10 @@ jobs:
         uses: Swatinem/rust-cache@v2
 
       - name: Check package contents
-        run: cargo package --workspace --list
+        run: cargo package --locked --workspace --list
 
       - name: Publish dry run
-        run: cargo publish --workspace --dry-run
+        run: cargo publish --locked --workspace --dry-run
 
   bench:
     name: Benchmarks (after tests)
