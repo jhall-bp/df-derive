@@ -23,6 +23,8 @@ jobs:
   criterion:
     name: Criterion Benchmarks (report only)
     runs-on: ubuntu-22.04
+    outputs:
+      pages_report: ${{ steps.pages_report.outputs.exists }}
 
     env:
       CARGO_INCREMENTAL: '0'
@@ -36,11 +38,8 @@ jobs:
       POLARS_MAX_THREADS: '1'
       CARGO_TERM_COLOR: always
 
-    # Set permissions for GitHub token.
-    # Required for deploying to GitHub Pages and for bencher/gha-adapter to comment on PRs.
+    # Required for bencher/gha-adapter to comment on PRs and create checks.
     permissions:
-      pages: write
-      id-token: write
       contents: read
       pull-requests: write
       checks: write
@@ -48,7 +47,7 @@ jobs:
     steps:
       # 1. Checkout the repository
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           # Fetch the main branch to compare against.
           # Set fetch-depth to 0 to fetch all history for all branches and tags.
@@ -63,7 +62,9 @@ jobs:
 
       # 3. Install Bencher CLI
       - name: Install Bencher CLI
-        uses: bencherdev/bencher@main
+        # Pin the action ref; the action still installs the latest CLI by
+        # default for Bencher Cloud compatibility.
+        uses: bencherdev/bencher@v0.6.6
 
       # 4. Run Criterion benchmarks and track with Bencher for visibility only.
       - name: Track Criterion benchmarks with Bencher
@@ -80,18 +81,42 @@ jobs:
 
       # 5. Upload the HTML report as an artifact (only on `main` branch)
       # This prepares the report for deployment to GitHub Pages.
+      - name: Check for Pages report
+        id: pages_report
+        if: inputs.event_name == 'push' && inputs.ref == 'refs/heads/main'
+        run: |
+          if [ -d target/criterion ] && [ -n "$(find target/criterion -mindepth 1 -print -quit)" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Upload Pages artifact
-        if: inputs.event_name == 'push' && inputs.ref == 'refs/heads/main' && hashFiles('target/criterion/**') != ''
-        uses: actions/upload-pages-artifact@v3
+        if: inputs.event_name == 'push' && inputs.ref == 'refs/heads/main' && steps.pages_report.outputs.exists == 'true'
+        uses: actions/upload-pages-artifact@v4
         with:
           # The folder where the HTML report is generated.
           path: ./target/criterion/
 
+  pages:
+    name: Deploy Criterion Pages
+    needs: criterion
+    if: inputs.event_name == 'push' && inputs.ref == 'refs/heads/main' && needs.criterion.outputs.pages_report == 'true'
+    runs-on: ubuntu-latest
+
+    permissions:
+      pages: write
+      id-token: write
+
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
       # 6. Deploy the report to GitHub Pages (only on `main` branch)
       - name: Deploy to GitHub Pages
-        if: inputs.event_name == 'push' && inputs.ref == 'refs/heads/main' && hashFiles('target/criterion/**') != ''
         id: deployment
-        uses: actions/deploy-pages@v4
+        uses: actions/deploy-pages@v5
 
   instruction-counts:
     name: Gungraun Instruction Counts
@@ -116,7 +141,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
         with:
           fetch-depth: 0
 
@@ -137,7 +162,9 @@ jobs:
           cargo install --version "$gungraun_version" gungraun-runner --locked
 
       - name: Install Bencher CLI
-        uses: bencherdev/bencher@main
+        # Pin the action ref; the action still installs the latest CLI by
+        # default for Bencher Cloud compatibility.
+        uses: bencherdev/bencher@v0.6.6
 
       - name: Track instruction-count benchmarks with Bencher
         run: |

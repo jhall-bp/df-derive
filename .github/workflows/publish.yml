@@ -19,7 +19,7 @@ jobs:
     environment:
       name: crates-io
     permissions:
-      contents: read 
+      contents: read
 
     steps:
       - name: Clean up runner image
@@ -32,7 +32,7 @@ jobs:
           df -h
 
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v6
 
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable

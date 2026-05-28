@@ -4,8 +4,6 @@ on:
   push:
     branches:
       - '**'
-    tags: # Run on tags so that bencher can track performance across versions
-      - 'v[0-9]+.[0-9]+.[0-9]+*'
     paths-ignore:
       - '**/*.md'
       - '*.md'
@@ -16,10 +14,6 @@ on:
 
 permissions:
   contents: read
-  pages: write
-  pull-requests: write
-  id-token: write
-  checks: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -160,6 +154,12 @@ jobs:
       - test
       - package
     if: ${{ needs.lint.result == 'success' && needs.test.result == 'success' && needs.package.result == 'success' && (github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref == 'refs/heads/main')) }}
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: write
+      pages: write
+      id-token: write
     uses: ./.github/workflows/bench.yml
     with:
       event_name: ${{ github.event_name }}
