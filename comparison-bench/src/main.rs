@@ -235,24 +235,37 @@ fn smoke() -> Result<()> {
     let native = generate_showcase_rows(8);
     let df_derive = <ShowcaseRow as Columnar>::columnar_to_dataframe(&native)?;
     let manual = manual_polars_to_dataframe(&native)?;
-    ensure_same_shape("manual", &df_derive, &manual)?;
+    ensure_same_frame("manual", &df_derive, &manual)?;
 
     let serde_rows = generate_serde_arrow_rows(8);
     let serde_fields = serde_arrow_fields()?;
     let serde_ipc = serde_arrow_to_polars_ipc(&serde_rows, &serde_fields)?;
-    ensure_same_shape("serde_arrow IPC", &df_derive, &serde_ipc)?;
+    ensure_same_frame("serde_arrow IPC", &df_derive, &serde_ipc)?;
     let serde_ffi = serde_arrow_to_polars_ffi(&serde_rows, &serde_fields)?;
-    ensure_same_shape("serde_arrow FFI", &df_derive, &serde_ffi)?;
+    ensure_same_frame("serde_arrow FFI", &df_derive, &serde_ffi)?;
 
     let row_derive_rows = generate_row_derive_rows(8);
     let row_derive = polars_row_derive_to_dataframe(&row_derive_rows)?;
-    ensure_same_shape("polars-row-derive", &df_derive, &row_derive)?;
+    ensure_same_frame("polars-row-derive", &df_derive, &row_derive)?;
 
-    println!("smoke ok: {:?}", df_derive.shape());
+    let flat_rows = generate_flat_row_derive_rows(8);
+    let flat_df_derive = <RowDeriveFlat as Columnar>::columnar_to_dataframe(&flat_rows)?;
+    let flat_row_derive = flat_row_derive_to_dataframe(&flat_rows)?;
+    ensure_same_frame(
+        "polars-row-derive flat row",
+        &flat_df_derive,
+        &flat_row_derive,
+    )?;
+
+    println!(
+        "smoke ok: rich {:?}, flat {:?}",
+        df_derive.shape(),
+        flat_df_derive.shape()
+    );
     Ok(())
 }
 
-fn ensure_same_shape(label: &str, left: &DataFrame, right: &DataFrame) -> Result<()> {
+fn ensure_same_frame(label: &str, left: &DataFrame, right: &DataFrame) -> Result<()> {
     anyhow::ensure!(
         left.shape() == right.shape(),
         "{label} shape mismatch: {:?} vs {:?}",
@@ -279,7 +292,23 @@ fn ensure_same_shape(label: &str, left: &DataFrame, right: &DataFrame) -> Result
         left_dtypes == right_dtypes,
         "{label} dtypes differ:\nleft: {left_dtypes:?}\nright: {right_dtypes:?}",
     );
+    if let Some(column) = first_value_mismatch(left, right) {
+        anyhow::bail!(
+            "{label} values differ in column {column:?}:\nleft:\n{}\nright:\n{}",
+            left.column(column)?.as_materialized_series().head(Some(8)),
+            right.column(column)?.as_materialized_series().head(Some(8)),
+        );
+    }
     Ok(())
+}
+
+fn first_value_mismatch<'a>(left: &'a DataFrame, right: &DataFrame) -> Option<&'a str> {
+    left.columns()
+        .iter()
+        .zip(right.columns())
+        .find_map(|(left_column, right_column)| {
+            (!left_column.equals_missing(right_column)).then(|| left_column.name().as_str())
+        })
 }
 
 fn showcase_output() -> Result<ShowcaseOutput> {
@@ -771,11 +800,8 @@ fn polars_row_derive_to_dataframe(items: &[RowDeriveInput]) -> PolarsResult<Data
     let flat_rows = items.iter().map(|row| row.flat.clone()).collect::<Vec<_>>();
     let mut df = flat_rows.into_iter().to_dataframe()?;
 
-    replace_with_cast(
-        &mut df,
-        "price",
-        &DataType::Decimal(PRICE_PRECISION, PRICE_SCALE),
-    )?;
+    let prices = items.iter().map(|row| row.flat.price).collect::<Vec<_>>();
+    df.with_column(decimal_series("price", prices).into())?;
     replace_with_cast(
         &mut df,
         "ts",
@@ -925,7 +951,7 @@ fn render_report(showcase: &ShowcaseOutput, timings: &[BenchStats]) -> Result<St
     report.push_str("\n```\n\n");
 
     report.push_str("### flat row speed check\n\n");
-    report.push_str("To avoid mixing `polars-row-derive` feature gaps with row-vs-columnar speed, the harness also benchmarks a deliberately flat scalar row through both derives. This flat check excludes nested lists, decimal/datetime/binary post-processing, and rich-schema column renames.\n\n");
+    report.push_str("To avoid mixing `polars-row-derive` feature gaps with row-vs-columnar speed, the harness also benchmarks a deliberately flat scalar row through both derives. This flat check excludes nested lists, decimal/datetime/binary post-processing, and rich-schema column renames. The `polars-row-derive` flat path still includes the per-call row clone forced by its consuming iterator API.\n\n");
     report.push_str("```rust\n");
     report.push_str(FLAT_ROW_SNIPPET);
     report.push_str("\n```\n\n");
@@ -943,7 +969,7 @@ fn render_report(showcase: &ShowcaseOutput, timings: &[BenchStats]) -> Result<St
         ));
     }
     report.push('\n');
-    report.push_str("Read the rich-schema table with scope: the hand-written Polars baseline is the straightforward boilerplate df-derive saves, not a proof that an expert cannot hand-write lower-level list builders; the `polars-row-derive + postprocess` number includes the work required to reach the same rich schema. The flat-row rows isolate pure derive speed on a simpler schema.\n\n");
+    report.push_str("Read the rich-schema table with scope: the hand-written Polars baseline is the straightforward boilerplate df-derive saves, not a proof that an expert cannot hand-write lower-level list builders; the `polars-row-derive + postprocess` number includes the work required to reach the same rich schema. The flat-row rows isolate a simpler schema, but the `polars-row-derive` flat path still includes the clone required by its consuming iterator API.\n\n");
 
     report.push_str("## Findings\n\n");
     report.push_str("### df-derive\n\n");
@@ -959,7 +985,7 @@ fn render_report(showcase: &ShowcaseOutput, timings: &[BenchStats]) -> Result<St
     report.push_str("### polars-row-derive\n\n");
     report.push_str("- Ergonomics: stale-looking but usable for this probe with Polars 0.53 because the macro expands to `polars::df!`. It does not understand nested flattening, decimal/time/binary attributes, or borrowed batch conversion.\n");
     report.push_str("- Type gaps for this shape: column names with dots require post-rename, decimal/datetime require post-casts, and Binary requires rebuilding/replacing the column. Without those post-steps the output is not the same schema.\n");
-    report.push_str("- Performance: the rich-schema number includes the row-derive conversion, row cloning needed by the consuming iterator API, and post-processing required to reach the same DataFrame schema. The separate flat-row number is the cleaner row-vs-columnar speed comparison.\n\n");
+    report.push_str("- Performance: the rich-schema number includes the row-derive conversion, row cloning needed by the consuming iterator API, and post-processing required to reach the same DataFrame schema. The separate flat-row number removes rich-schema post-processing, but still includes the clone required by the consuming iterator API.\n\n");
 
     report.push_str("## Gotchas encountered\n\n");
     report.push_str("- `serde_arrow::to_record_batch` takes `&T: Serialize`, so passing a bare slice failed because `[SerdeArrowRow]` is unsized. The harness passes `&Vec<SerdeArrowRow>` instead.\n");
@@ -969,7 +995,7 @@ fn render_report(showcase: &ShowcaseOutput, timings: &[BenchStats]) -> Result<St
     report.push_str("- `serde_bytes` was needed to keep `Vec<u8>` on the binary path. Without being explicit about bytes, it is easy to accidentally compare a list-of-u8 shape instead of a Binary column.\n");
     report.push_str("- `polars-row-derive` compiled with Polars 0.53, but its generated `polars::df!` path could not build the `Vec<Vec<T>>` list columns used by the flattened `Vec<Nested>` representation. Those columns had to be added manually after the derived conversion.\n");
     report.push_str("- `polars-row-derive` consumes an iterator of owned rows, so repeated benchmark iterations either consume the dataset or require cloning/collecting a flat row buffer. The benchmark includes that cloning because it is required by the usable API shape here.\n");
-    report.push_str("- Hand-written Polars is easy to make unfair accidentally. The smoke test checks shape, column order, and dtypes against df-derive so the manual, serde_arrow, and row-derive paths all end at the same DataFrame schema before timing claims are made.\n");
+    report.push_str("- Hand-written Polars is easy to make unfair accidentally. The smoke test checks shape, column order, dtypes, and values against df-derive so the manual, serde_arrow, and row-derive paths all end at the same DataFrame before timing claims are made. It also checks the flat `df-derive` and `polars-row-derive` outputs against each other.\n");
     report.push_str("- The hand-written baseline is intentionally the maintainable/obvious version, not the theoretical ceiling. A lower-level hand implementation using list builders should be faster than this baseline and could approach df-derive's generated code.\n");
     report.push('\n');
 
@@ -1177,13 +1203,10 @@ struct RowDeriveFlat {
     risk_sector: String,
 }
 
+let prices = rows.iter().map(|row| row.flat.price).collect::<Vec<_>>();
 let flat_rows = rows.iter().map(|row| row.flat.clone()).collect::<Vec<_>>();
 let mut df = flat_rows.into_iter().to_dataframe()?;
-df.with_column(
-    df.column("price")?
-        .as_materialized_series()
-        .cast(&DataType::Decimal(18, 6))?,
-)?;
+df.with_column(decimal_series("price", prices).into())?;
 df.with_column(
     df.column("ts")?
         .as_materialized_series()
@@ -1220,7 +1243,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn conversions_produce_same_shape_on_small_batch() -> Result<()> {
+    fn conversions_produce_same_frame_on_small_batch() -> Result<()> {
         smoke()
     }
 }

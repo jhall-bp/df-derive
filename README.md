@@ -70,6 +70,13 @@ exports the derive macro plus `ToDataFrame`, `Columnar`, `ToDataFrameVec`, and
 `Decimal128Encode`; it also exports the trait as `ToDataFrameTrait` for code
 that wants an unambiguous type-namespace alias.
 
+## Benchmarks
+
+A reproducible head-to-head benchmark comparing `df-derive` with hand-written
+Polars, `serde_arrow`, and `polars-row-derive` lives in
+[comparison-bench/README.md](comparison-bench/README.md). The latest generated
+report is [comparison-bench/BENCHMARK.md](comparison-bench/BENCHMARK.md).
+
 ## Crate Layout
 
 This repository uses a serde-like three-crate architecture:

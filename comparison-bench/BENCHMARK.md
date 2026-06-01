@@ -2,7 +2,7 @@
 
 ## Environment
 
-- Date: Mon Jun  1 18:22:56 UTC 2026
+- Date: Mon Jun  1 20:10:02 UTC 2026
 - Host: Darwin Giovannis-MBP.fritz.box 25.5.0 Darwin Kernel Version 25.5.0: Mon Apr 27 20:41:12 PDT 2026; root:xnu-12377.121.6~2/RELEASE_ARM64_T6050 arm64
 - CPU: Apple M5 Pro
 - RAM: 64.0 GiB
@@ -225,13 +225,10 @@ struct RowDeriveFlat {
     risk_sector: String,
 }
 
+let prices = rows.iter().map(|row| row.flat.price).collect::<Vec<_>>();
 let flat_rows = rows.iter().map(|row| row.flat.clone()).collect::<Vec<_>>();
 let mut df = flat_rows.into_iter().to_dataframe()?;
-df.with_column(
-    df.column("price")?
-        .as_materialized_series()
-        .cast(&DataType::Decimal(18, 6))?,
-)?;
+df.with_column(decimal_series("price", prices).into())?;
 df.with_column(
     df.column("ts")?
         .as_materialized_series()
@@ -246,7 +243,7 @@ df.rename("risk_sector", "risk.sector".into())?;
 
 ### flat row speed check
 
-To avoid mixing `polars-row-derive` feature gaps with row-vs-columnar speed, the harness also benchmarks a deliberately flat scalar row through both derives. This flat check excludes nested lists, decimal/datetime/binary post-processing, and rich-schema column renames.
+To avoid mixing `polars-row-derive` feature gaps with row-vs-columnar speed, the harness also benchmarks a deliberately flat scalar row through both derives. This flat check excludes nested lists, decimal/datetime/binary post-processing, and rich-schema column renames. The `polars-row-derive` flat path still includes the per-call row clone forced by its consuming iterator API.
 
 ```rust
 #[derive(Clone, ToDataFrame, IterToDataFrame)]
@@ -274,29 +271,29 @@ let row_derive_df = flat_rows.into_iter().to_dataframe()?;
 
 | Approach | Rows | Median | Min |
 | --- | ---: | ---: | ---: |
-| df-derive | 1000 | 105.583us | 103.667us |
-| hand-written Polars | 1000 | 919.708us | 830.834us |
-| serde_arrow + IPC bridge | 1000 | 326.417us | 302.000us |
-| serde_arrow + C Data FFI bridge | 1000 | 283.250us | 263.083us |
-| polars-row-derive + postprocess | 1000 | 811.333us | 751.125us |
-| df-derive flat row | 1000 | 23.209us | 23.000us |
-| polars-row-derive flat row | 1000 | 94.875us | 93.458us |
-| df-derive | 100000 | 6.623ms | 5.926ms |
-| hand-written Polars | 100000 | 84.232ms | 83.108ms |
-| serde_arrow + IPC bridge | 100000 | 27.402ms | 26.923ms |
-| serde_arrow + C Data FFI bridge | 100000 | 20.334ms | 20.101ms |
-| polars-row-derive + postprocess | 100000 | 80.618ms | 77.982ms |
-| df-derive flat row | 100000 | 2.036ms | 1.944ms |
-| polars-row-derive flat row | 100000 | 8.576ms | 8.313ms |
-| df-derive | 1000000 | 72.437ms | 70.784ms |
-| hand-written Polars | 1000000 | 840.479ms | 805.966ms |
-| serde_arrow + IPC bridge | 1000000 | 285.411ms | 282.481ms |
-| serde_arrow + C Data FFI bridge | 1000000 | 212.534ms | 210.936ms |
-| polars-row-derive + postprocess | 1000000 | 810.436ms | 789.790ms |
-| df-derive flat row | 1000000 | 21.025ms | 20.763ms |
-| polars-row-derive flat row | 1000000 | 87.950ms | 86.922ms |
+| df-derive | 1000 | 93.209us | 91.250us |
+| hand-written Polars | 1000 | 916.208us | 841.042us |
+| serde_arrow + IPC bridge | 1000 | 319.958us | 306.833us |
+| serde_arrow + C Data FFI bridge | 1000 | 287.917us | 267.625us |
+| polars-row-derive + postprocess | 1000 | 775.541us | 746.250us |
+| df-derive flat row | 1000 | 22.167us | 22.084us |
+| polars-row-derive flat row | 1000 | 93.708us | 90.958us |
+| df-derive | 100000 | 7.501ms | 6.764ms |
+| hand-written Polars | 100000 | 71.585ms | 70.175ms |
+| serde_arrow + IPC bridge | 100000 | 28.483ms | 27.794ms |
+| serde_arrow + C Data FFI bridge | 100000 | 20.334ms | 20.033ms |
+| polars-row-derive + postprocess | 100000 | 78.189ms | 75.470ms |
+| df-derive flat row | 100000 | 2.017ms | 1.917ms |
+| polars-row-derive flat row | 100000 | 8.440ms | 8.263ms |
+| df-derive | 1000000 | 73.347ms | 72.184ms |
+| hand-written Polars | 1000000 | 706.177ms | 696.769ms |
+| serde_arrow + IPC bridge | 1000000 | 283.180ms | 280.347ms |
+| serde_arrow + C Data FFI bridge | 1000000 | 212.492ms | 210.705ms |
+| polars-row-derive + postprocess | 1000000 | 795.398ms | 789.995ms |
+| df-derive flat row | 1000000 | 20.837ms | 20.501ms |
+| polars-row-derive flat row | 1000000 | 89.877ms | 88.169ms |
 
-Read the rich-schema table with scope: the hand-written Polars baseline is the straightforward boilerplate df-derive saves, not a proof that an expert cannot hand-write lower-level list builders; the `polars-row-derive + postprocess` number includes the work required to reach the same rich schema. The flat-row rows isolate pure derive speed on a simpler schema.
+Read the rich-schema table with scope: the hand-written Polars baseline is the straightforward boilerplate df-derive saves, not a proof that an expert cannot hand-write lower-level list builders; the `polars-row-derive + postprocess` number includes the work required to reach the same rich schema. The flat-row rows isolate a simpler schema, but the `polars-row-derive` flat path still includes the clone required by its consuming iterator API.
 
 ## Findings
 
@@ -320,7 +317,7 @@ Read the rich-schema table with scope: the hand-written Polars baseline is the s
 
 - Ergonomics: stale-looking but usable for this probe with Polars 0.53 because the macro expands to `polars::df!`. It does not understand nested flattening, decimal/time/binary attributes, or borrowed batch conversion.
 - Type gaps for this shape: column names with dots require post-rename, decimal/datetime require post-casts, and Binary requires rebuilding/replacing the column. Without those post-steps the output is not the same schema.
-- Performance: the rich-schema number includes the row-derive conversion, row cloning needed by the consuming iterator API, and post-processing required to reach the same DataFrame schema. The separate flat-row number is the cleaner row-vs-columnar speed comparison.
+- Performance: the rich-schema number includes the row-derive conversion, row cloning needed by the consuming iterator API, and post-processing required to reach the same DataFrame schema. The separate flat-row number removes rich-schema post-processing, but still includes the clone required by the consuming iterator API.
 
 ## Gotchas encountered
 
@@ -331,7 +328,7 @@ Read the rich-schema table with scope: the hand-written Polars baseline is the s
 - `serde_bytes` was needed to keep `Vec<u8>` on the binary path. Without being explicit about bytes, it is easy to accidentally compare a list-of-u8 shape instead of a Binary column.
 - `polars-row-derive` compiled with Polars 0.53, but its generated `polars::df!` path could not build the `Vec<Vec<T>>` list columns used by the flattened `Vec<Nested>` representation. Those columns had to be added manually after the derived conversion.
 - `polars-row-derive` consumes an iterator of owned rows, so repeated benchmark iterations either consume the dataset or require cloning/collecting a flat row buffer. The benchmark includes that cloning because it is required by the usable API shape here.
-- Hand-written Polars is easy to make unfair accidentally. The smoke test checks shape, column order, and dtypes against df-derive so the manual, serde_arrow, and row-derive paths all end at the same DataFrame schema before timing claims are made.
+- Hand-written Polars is easy to make unfair accidentally. The smoke test checks shape, column order, dtypes, and values against df-derive so the manual, serde_arrow, and row-derive paths all end at the same DataFrame before timing claims are made. It also checks the flat `df-derive` and `polars-row-derive` outputs against each other.
 - The hand-written baseline is intentionally the maintainable/obvious version, not the theoretical ceiling. A lower-level hand implementation using list builders should be faster than this baseline and could approach df-derive's generated code.
 
 ## Headline takeaway

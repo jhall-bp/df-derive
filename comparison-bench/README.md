@@ -28,7 +28,7 @@ What each command does:
 
 | Command | Purpose |
 | --- | --- |
-| `cargo run --release -- --smoke` | Builds every path and checks shape, column order, and dtype parity against `df-derive`. |
+| `cargo run --release -- --smoke` | Checks rich paths against `df-derive` and the flat pair against each other for shape, column order, dtypes, and values. |
 | `cargo run --release -- --probe` | Prints the schema that `serde_arrow::from_type` infers for the flattened row. |
 | `cargo run --release` | Runs the full benchmark, prints schema/head/timings, and rewrites `BENCHMARK.md`. |
 
@@ -101,7 +101,7 @@ struct ShowcaseRow {
 Before timing, the smoke test builds each rich-schema alternative and compares it to the `df-derive` DataFrame:
 
 ```rust
-fn ensure_same_shape(label: &str, left: &DataFrame, right: &DataFrame) -> Result<()> {
+fn ensure_same_frame(label: &str, left: &DataFrame, right: &DataFrame) -> Result<()> {
     anyhow::ensure!(left.shape() == right.shape(), "{label} shape mismatch");
     anyhow::ensure!(
         left.get_column_names() == right.get_column_names(),
@@ -120,11 +120,12 @@ fn ensure_same_shape(label: &str, left: &DataFrame, right: &DataFrame) -> Result
         .collect::<Vec<_>>();
 
     anyhow::ensure!(left_dtypes == right_dtypes, "{label} dtypes differ");
+    anyhow::ensure!(left.equals_missing(right), "{label} values differ");
     Ok(())
 }
 ```
 
-The benchmark is not comparing "whatever each crate naturally emits". It is comparing the cost of reaching the same Polars schema.
+The benchmark is not comparing "whatever each crate naturally emits". It is comparing the cost of reaching the same Polars frame. The smoke path also checks the flat `df-derive` and `polars-row-derive` outputs against each other.
 
 ## Measured paths
 
@@ -288,10 +289,11 @@ struct RowDeriveFlat {
 ```
 
 ```rust
+let prices = items.iter().map(|row| row.flat.price).collect::<Vec<_>>();
 let flat_rows = items.iter().map(|row| row.flat.clone()).collect::<Vec<_>>();
 let mut df = flat_rows.into_iter().to_dataframe()?;
 
-replace_with_cast(&mut df, "price", &DataType::Decimal(18, 6))?;
+df.with_column(decimal_series("price", prices).into())?;
 replace_with_cast(
     &mut df,
     "ts",
@@ -307,7 +309,7 @@ df.rename("risk_sector", "risk.sector".into())?;
 df.select(OUTPUT_COLUMNS)?;
 ```
 
-The flat scalar path is a cleaner row-vs-columnar check. It excludes nested lists, Binary, datetime casts, decimal casts, and rich-schema renames:
+The flat scalar path is a cleaner row-vs-columnar check. It excludes nested lists, Binary, datetime casts, decimal casts, and rich-schema renames. It still includes the per-call clone required by the consuming `polars-row-derive` iterator API:
 
 ```rust
 measure(Approach::FlatDfDerive, rows, || {
@@ -369,7 +371,7 @@ What this does not claim:
 
 - It does not prove that generated code beats the fastest possible hand-written Polars. The manual baseline is intentionally readable, especially around list columns.
 - It does not claim `df-derive` is better than `serde_arrow` when the target is Arrow or Parquet. The `serde_arrow` numbers include the cost of ending in Polars.
-- It does not use the rich-schema `polars-row-derive` number as a pure row-vs-columnar claim. The flat scalar benchmark exists for that comparison.
+- It does not use the rich-schema `polars-row-derive` number as a pure row-vs-columnar claim. The flat scalar benchmark exists for that comparison, and its row-derive number still includes the clone forced by the consuming iterator API.
 
 ## Updating the benchmark
 
