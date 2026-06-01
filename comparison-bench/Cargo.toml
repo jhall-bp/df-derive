@@ -1,0 +1,36 @@
+[package]
+name = "df-derive-head-to-head"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[workspace]
+
+[dependencies]
+anyhow = "1.0"
+arrow = { version = "57", default-features = false, features = ["ffi", "ipc"] }
+chrono = { version = "0.4", features = ["serde"] }
+df-derive = "0.3"
+polars = { version = "0.53", default-features = false, features = [
+    "fmt",
+    "ipc_streaming",
+    "timezones",
+    "dtype-decimal",
+    "dtype-date",
+    "dtype-datetime",
+    "dtype-time",
+    "dtype-duration",
+    "dtype-i8",
+    "dtype-i16",
+    "dtype-i128",
+    "dtype-u8",
+    "dtype-u16",
+    "dtype-u128",
+] }
+polars-arrow = "0.53"
+polars-row-derive = "0.1"
+rust_decimal = { version = "1.42", default-features = false, features = ["std", "serde"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_arrow = { version = "0.14.1", default-features = false, features = ["arrow-57"] }
+serde_bytes = "0.11"
+serde_json = "1.0"
