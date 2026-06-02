@@ -22,7 +22,6 @@ help: the following other types implement trait `Columnar`
    |
    |     impl Columnar for () {
    |     ^^^^^^^^^^^^^^^^^^^^ `()`
-   = help: see issue #48214
    = note: this error originates in the derive macro `ToDataFrame` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `Inner: ToDataFrame` is not satisfied
@@ -49,7 +48,6 @@ help: the following other types implement trait `ToDataFrame`
    |
    |     impl ToDataFrame for () {
    |     ^^^^^^^^^^^^^^^^^^^^^^^ `()`
-   = help: see issue #48214
    = note: this error originates in the derive macro `ToDataFrame` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `MyDecimal: Decimal128Encode` is not satisfied
@@ -73,7 +71,6 @@ help: the following other types implement trait `Decimal128Encode`
 ...
    |       impl Decimal128Encode for rust_decimal::Decimal {
    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^ `rust_decimal::decimal::Decimal`
-   = help: see issue #48214
    = note: this error originates in the derive macro `ToDataFrame` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error[E0277]: the trait bound `Inner: ToDataFrame` is not satisfied
