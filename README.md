@@ -110,6 +110,114 @@ The direct `&[Self]` method is generated so top-level slice conversion does
 not allocate a temporary `Vec<&Self>`. The borrowed `&[&Self]` method remains
 for nested and generic composition.
 
+## Representative Generated Code
+
+For the quick-start `Trade` struct, the derive emits code shaped like this.
+The snippet is abridged for readability: generated dependency paths are
+shortened with imports, rustc's `vec!` expansion is omitted, and
+compiler-generated helper blocks are removed.
+
+```rust,ignore
+use df_derive::dataframe::{Columnar, ToDataFrame};
+use df_derive::dataframe::__private::{
+    polars::prelude::{
+        Column, DataFrame, DataType, Float64Chunked, IntoSeries, PolarsResult,
+        Series, StringChunked, UInt64Chunked,
+    },
+    polars_arrow::array::MutableBinaryViewArray,
+};
+
+#[automatically_derived]
+impl ToDataFrame for Trade {
+    fn to_dataframe(&self) -> PolarsResult<DataFrame> {
+        <Self as Columnar>::columnar_from_refs(&[self])
+    }
+
+    fn empty_dataframe() -> PolarsResult<DataFrame> {
+        DataFrame::new_infer_height(vec![
+            Series::new_empty("symbol".into(), &DataType::String).into(),
+            Series::new_empty("price".into(), &DataType::Float64).into(),
+            Series::new_empty("size".into(), &DataType::UInt64).into(),
+        ])
+    }
+
+    fn schema() -> PolarsResult<Vec<(String, DataType)>> {
+        Ok(vec![
+            ("symbol".to_owned(), DataType::String),
+            ("price".to_owned(), DataType::Float64),
+            ("size".to_owned(), DataType::UInt64),
+        ])
+    }
+}
+
+#[automatically_derived]
+impl Columnar for Trade {
+    fn columnar_to_dataframe(items: &[Self]) -> PolarsResult<DataFrame> {
+        if items.is_empty() {
+            return <Self as ToDataFrame>::empty_dataframe();
+        }
+
+        let mut symbol = MutableBinaryViewArray::<str>::with_capacity(items.len());
+        let mut price = Vec::<f64>::with_capacity(items.len());
+        let mut size = Vec::<u64>::with_capacity(items.len());
+
+        for item in items {
+            symbol.push_value_ignore_validity(item.symbol.as_str());
+            price.push(item.price);
+            size.push(item.size);
+        }
+
+        let mut columns = Vec::<Column>::new();
+
+        let s = IntoSeries::into_series(StringChunked::with_chunk(
+            "symbol".into(),
+            symbol.freeze(),
+        ));
+        columns.push(s.into());
+
+        let s = IntoSeries::into_series(Float64Chunked::from_vec("price".into(), price));
+        columns.push(s.into());
+
+        let s = IntoSeries::into_series(UInt64Chunked::from_vec("size".into(), size));
+        columns.push(s.into());
+
+        DataFrame::new_infer_height(columns)
+    }
+
+    fn columnar_from_refs(items: &[&Self]) -> PolarsResult<DataFrame> {
+        if items.is_empty() {
+            return <Self as ToDataFrame>::empty_dataframe();
+        }
+
+        let mut symbol = MutableBinaryViewArray::<str>::with_capacity(items.len());
+        let mut price = Vec::<f64>::with_capacity(items.len());
+        let mut size = Vec::<u64>::with_capacity(items.len());
+
+        for item in items {
+            symbol.push_value_ignore_validity(item.symbol.as_str());
+            price.push(item.price);
+            size.push(item.size);
+        }
+
+        let mut columns = Vec::<Column>::new();
+
+        let s = IntoSeries::into_series(StringChunked::with_chunk(
+            "symbol".into(),
+            symbol.freeze(),
+        ));
+        columns.push(s.into());
+
+        let s = IntoSeries::into_series(Float64Chunked::from_vec("price".into(), price));
+        columns.push(s.into());
+
+        let s = IntoSeries::into_series(UInt64Chunked::from_vec("size".into(), size));
+        columns.push(s.into());
+
+        DataFrame::new_infer_height(columns)
+    }
+}
+```
+
 ## Supported Types And Shapes
 
 Container and wrapper support:
