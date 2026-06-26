@@ -560,9 +560,9 @@ struct Tx {
 ## Compatibility
 
 - **Rust edition**: 2024
-- **Minimum supported Rust version**: 1.90. This is above the edition's
+- **Minimum supported Rust version**: 1.91. This is above the edition's
   1.85 floor because the Polars 0.54 dependency graph uses language features
-  that first compile on Rust 1.90.
+  that first compile on Rust 1.91.
 - **Polars**: 0.54
 - **polars-arrow**: 0.54 through the default runtime facade. Custom runtimes
   selected with explicit trait overrides need a compatible direct dependency
